@@ -98,13 +98,16 @@ app.post("/webhook", async (req, res) => {
 
   const event = body.event;
   const eventType = body.header?.event_type;
+  const msgType = event?.message?.message_type || event?.message?.msg_type;
+  const chatType = event?.message?.chat_type;
+
   console.log("事件类型:", eventType);
-  console.log("消息类型:", event?.message?.msg_type);
-  console.log("聊天类型:", event?.message?.chat_type);
+  console.log("消息类型:", msgType);
+  console.log("聊天类型:", chatType);
 
   if (eventType !== "im.message.receive_v1") return;
-  if (event?.message?.chat_type !== "group") return;
-  if (event?.message?.msg_type !== "text") return;
+  if (chatType !== "group") return;
+  if (msgType !== "text") return;
 
   const chatId = event.message.chat_id;
   let content = "";
@@ -120,12 +123,13 @@ app.post("/webhook", async (req, res) => {
   buffer[chatId].push({ sender, content });
   if (buffer[chatId].length > 50) buffer[chatId].shift();
 
-  if (content.trim() !== "/todo") return;
+  const trimmed = content.trim().replace(/@\S+\s*/g, "").trim();
+  if (trimmed !== "/todo") return;
 
   console.log("触发/todo，开始分析...");
   try {
     const todos = await analyzeTodos(buffer[chatId]);
-    console.log("分析结果:", todos);
+    console.log("分析结果:", JSON.stringify(todos));
     const msg = formatMessage(todos);
     if (msg) await sendToGroup(chatId, msg);
     else await sendToGroup(chatId, "✅ 暂无待办任务，大家都完成啦！");
