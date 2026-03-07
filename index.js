@@ -95,4 +95,22 @@ app.post("/webhook", async (req, res) => {
   if (body.header?.event_type !== "im.message.receive_v1") return;
   if (event?.message?.chat_type !== "group") return;
   if (event?.message?.msg_type !== "text") return;
-  const c
+  const chatId  = event.message.chat_id;
+  const content = JSON.parse(event.message.content).text || "";
+  const sender  = event.sender?.sender_id?.open_id || "未知";
+  if (!buffer[chatId]) buffer[chatId] = [];
+  buffer[chatId].push({ sender, content });
+  if (buffer[chatId].length > 50) buffer[chatId].shift();
+  if (content.trim() !== "/todo") return;
+  try {
+    const todos = await analyzeTodos(buffer[chatId]);
+    const msg   = formatMessage(todos);
+    if (msg) await sendToGroup(chatId, msg);
+    else await sendToGroup(chatId, "✅ 暂无待办任务，大家都完成啦！");
+  } catch (err) {
+    console.error("Error:", err.message);
+  }
+});
+
+app.get("/", (_, res) => res.send("飞书 TO-DO 机器人运行中 ✅"));
+app.listen(PORT, () => console.log(`🚀 启动在端口 ${PORT}`));
