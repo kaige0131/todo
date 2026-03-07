@@ -83,32 +83,54 @@ const seen = new Set();
 
 app.post("/webhook", async (req, res) => {
   const body = req.body;
+  console.log("收到请求:", JSON.stringify(body).slice(0, 500));
+
   if (body.type === "url_verification") return res.json({ challenge: body.challenge });
+
   const eid = body.header?.event_id;
   if (eid) {
-    if (seen.has(eid)) return res.sendStatus(200);
+    if (seen.has(eid)) { console.log("重复请求忽略"); return res.sendStatus(200); }
     seen.add(eid);
     if (seen.size > 500) seen.delete(seen.values().next().value);
   }
+
   res.sendStatus(200);
+
   const event = body.event;
-  if (body.header?.event_type !== "im.message.receive_v1") return;
+  const eventType = body.header?.event_type;
+  console.log("事件类型:", eventType);
+  console.log("消息类型:", event?.message?.msg_type);
+  console.log("聊天类型:", event?.message?.chat_type);
+
+  if (eventType !== "im.message.receive_v1") return;
   if (event?.message?.chat_type !== "group") return;
   if (event?.message?.msg_type !== "text") return;
-  const chatId  = event.message.chat_id;
-  const content = JSON.parse(event.message.content).text || "";
-  const sender  = event.sender?.sender_id?.open_id || "未知";
+
+  const chatId = event.message.chat_id;
+  let content = "";
+  try {
+    content = JSON.parse(event.message.content).text || "";
+  } catch(e) {
+    content = event.message.content || "";
+  }
+  const sender = event.sender?.sender_id?.open_id || "未知";
+  console.log("消息内容:", content, "发送者:", sender);
+
   if (!buffer[chatId]) buffer[chatId] = [];
   buffer[chatId].push({ sender, content });
   if (buffer[chatId].length > 50) buffer[chatId].shift();
+
   if (content.trim() !== "/todo") return;
+
+  console.log("触发/todo，开始分析...");
   try {
     const todos = await analyzeTodos(buffer[chatId]);
-    const msg   = formatMessage(todos);
+    console.log("分析结果:", todos);
+    const msg = formatMessage(todos);
     if (msg) await sendToGroup(chatId, msg);
     else await sendToGroup(chatId, "✅ 暂无待办任务，大家都完成啦！");
   } catch (err) {
-    console.error("Error:", err.message);
+    console.error("Error:", err.message, err.response?.data);
   }
 });
 
